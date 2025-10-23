@@ -12086,6 +12086,8 @@ typedef struct ev_opts {
 	int scripted;
 	int follow;
 	int clear;
+	int ntypes;
+	char *types[ZEVENT_MAX_NTYPES];
 	char poolname[ZFS_MAX_DATASET_NAME_LEN];
 } ev_opts_t;
 
@@ -12377,6 +12379,50 @@ zpool_do_events_nvprint(nvlist_t *nvl, int depth)
 	}
 }
 
+static const char *
+get_event_subclass(const char *class)
+{
+	const char *p;
+	int i;
+
+	if (!class)
+		return (NULL);
+
+	p = class;
+	for (i = 0; i < 3; i++) {
+		p = strchr(p, '.');
+		if (!p)
+			break;
+		p++;
+	}
+	return (p);
+}
+
+static int
+zpool_match_filter_events(nvlist_t *nvl, ev_opts_t *opts)
+{
+	const char* ptr;
+	const char* type;
+
+	/* no filter, all match */
+	if (opts->ntypes == 0)
+		return (1);
+
+	verify(nvlist_lookup_string(nvl, FM_CLASS, &ptr) == 0);
+	/* get subclass */
+	type = get_event_subclass(ptr);
+	if (type == NULL)
+		type = ptr;
+
+	for (int i = 0; i < opts->ntypes; i++) {
+		if (strcmp(type, opts->types[i]) == 0) {
+			return (1);
+		}
+	}
+
+	return (0);
+}
+
 static int
 zpool_do_events_next(ev_opts_t *opts)
 {
@@ -12402,6 +12448,9 @@ zpool_do_events_next(ev_opts_t *opts)
 		if (strlen(opts->poolname) > 0 &&
 		    nvlist_lookup_string(nvl, FM_FMRI_ZFS_POOL, &pool) == 0 &&
 		    strcmp(opts->poolname, pool) != 0)
+			continue;
+
+		if (!zpool_match_filter_events(nvl, opts))
 			continue;
 
 		zpool_do_events_short(nvl, opts);
@@ -12445,7 +12494,7 @@ zpool_do_events(int argc, char **argv)
 	int c;
 
 	/* check options */
-	while ((c = getopt(argc, argv, "vHfc")) != -1) {
+	while ((c = getopt(argc, argv, "vHfce:")) != -1) {
 		switch (c) {
 		case 'v':
 			opts.verbose = 1;
@@ -12458,6 +12507,16 @@ zpool_do_events(int argc, char **argv)
 			break;
 		case 'c':
 			opts.clear = 1;
+			break;
+		case 'e':
+			for (char *tok; (tok = strsep(&optarg, ",")); ) {
+				if (*tok == '\0')
+					continue;
+
+				opts.types[opts.ntypes++] = tok;
+				if (opts.ntypes >= ZEVENT_MAX_NTYPES)
+					break;
+			}
 			break;
 		case '?':
 			(void) fprintf(stderr, gettext("invalid option '%c'\n"),

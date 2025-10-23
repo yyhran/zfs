@@ -434,6 +434,7 @@ typedef struct zinject_record {
 #define	ZEVENT_NONE		0x0
 #define	ZEVENT_NONBLOCK		0x1
 #define	ZEVENT_SIZE		1024
+#define	ZEVENT_MAX_NTYPES	8
 
 #define	ZEVENT_SEEK_START	0
 #define	ZEVENT_SEEK_END		UINT64_MAX
